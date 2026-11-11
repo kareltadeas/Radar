@@ -1,0 +1,8 @@
+yfinance
+pandas
+numpy
+streamlit
+google-genai
+python-dotenv
+requests
+lxml

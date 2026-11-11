@@ -1,0 +1,42 @@
+name: Morning Radar & Portfolio Guard Scan
+
+on:
+  schedule:
+    # Běží každé pondělí až pátek v 5:00 UTC (cca 6:00 SEČ před otevřením evropských trhů a před začátkem dne)
+    - cron: '0 5 * * 1-5'
+  workflow_dispatch: # Možnost spustit ručně tlačítkem v GitHub Actions
+
+permissions:
+  contents: write
+
+jobs:
+  market_scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repozitáře
+        uses: actions/checkout@v4
+
+      - name: Nastavení Pythonu 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Instalace závislostí
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Spuštění ranního skenu S&P 500 + MidCap 400
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python scanner.py --mode full
+
+      - name: Uložení aktualizované mezipaměti do repozitáře
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Radar Bot"
+          git add data/radar_cache.json data/universe_*.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore(radar): automatická aktualizace ranního radaru [skip ci]" && git push)

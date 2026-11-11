@@ -1,0 +1,27 @@
+# Virtuální prostředí
+venv/
+ENV/
+env/
+.venv/
+
+# Citlivá data a konfigurace
+.env
+.env.local
+
+# Privátní data uživatele (reálné portfolio)
+portfolio.json
+
+# Lokální dočasná mezipaměť (fundamenty)
+cache/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data mezipaměti radaru - volitelné (pokud nechcete commitovat lokální testy)
+# data/radar_cache.json
+
+# Systémové soubory
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log

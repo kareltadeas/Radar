@@ -1,0 +1,20 @@
+[
+  {
+    "ticker": "MSFT",
+    "shares": 5.0,
+    "buy_price": 380.0,
+    "type": "CORE"
+  },
+  {
+    "ticker": "NVDA",
+    "shares": 10.0,
+    "buy_price": 110.0,
+    "type": "SATELLITE"
+  },
+  {
+    "ticker": "JNJ",
+    "shares": 8.0,
+    "buy_price": 155.0,
+    "type": "CORE"
+  }
+]
