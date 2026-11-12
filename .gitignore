@@ -11,7 +11,8 @@ env/
 # Privátní data uživatele (reálné portfolio)
 portfolio.json
 
-# Lokální dočasná mezipaměť (fundamenty)
+# Dočasné skripty a scratch
+scratch/
 cache/
 __pycache__/
 *.py[cod]

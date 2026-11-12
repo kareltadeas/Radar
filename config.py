@@ -20,7 +20,7 @@ PORTFOLIO_FILE = "portfolio.json"
 # Expirace mezipaměti fundamentů v sekundách (24 hodin = 86400 s)
 FUNDAMENTALS_CACHE_TTL = 86400
 
-# Koš 1: CORE (Klidný přístav - S&P 500 stabilní giganti)
+# Koš 1: CORE (Klidný přístav - S&P 500 stabilní giganti pro Watchlist)
 CORE_RULES = {
     "max_debt_to_equity": 100.0,       # D/E pod 100 % (1.0) pro bezpečnou rozvahu
     "min_free_cash_flow": 0,           # Kladné volné cash flow
@@ -32,11 +32,28 @@ CORE_RULES = {
     ]
 }
 
-# Koš 2: SATELLITE (Akcelerátor - Růst a Momentum)
+# Koš 2: SATELLITE (Akcelerátor - Růst a Momentum pro Watchlist)
 SATELLITE_RULES = {
     "min_revenue_growth": 0.15,        # Meziroční růst tržeb alespoň 15 % (YoY)
     "rsi_min": 45.0,                   # Potvrzené vzestupné momentum
     "rsi_max": 70.0,                   # Ochrana před nákupem v překoupené zóně
+}
+
+# EXKLUZIVNÍ ALPHA ALERTY (Přísný nákupní filtr - smetánka trhu, cíl 0 až max 5 za den)
+ALPHA_RULES = {
+    "min_score": 90.0,                 # Minimální skóre pro vstup do Alpha Alertu
+    "max_daily_alerts": 5,             # Zastropování TOP N nejkvalitnějších příležitostí dne
+    # Core Alpha kritéria (mimořádná ziskovost a podhodnocení)
+    "core_max_pe": 24.0,               # Atraktivní valuace pod 24 (ne hraničních 28)
+    "core_min_roe": 15.0,              # Vysoká rentabilita vlastního kapitálu
+    "core_min_margin": 12.0,           # Čistá marže alespoň 12 %
+    "core_min_upside": 15.0,           # Analytický růstový potenciál alespoň +15 %
+    "core_dip_sweet_spot_min": -7.0,   # Skutečná sleva (ne jen běžné zakolísání -5 %)
+    # Satellite Alpha kritéria (hyper-růst a explozivní momentum)
+    "sat_min_growth": 0.25,            # Růst tržeb alespoň +25 % YoY (hyper-growth)
+    "sat_min_upside": 20.0,            # Analytický růstový potenciál alespoň +20 %
+    "sat_rsi_min": 50.0,               # Vzestupný start momenta
+    "sat_rsi_max": 65.0,               # Bezpečný odstup od překoupenosti
 }
 
 # Pravidla pro audit portfolia

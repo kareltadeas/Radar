@@ -9,7 +9,8 @@ from config import (
     DATA_DIR,
     RADAR_CACHE_FILE,
     PORTFOLIO_FILE,
-    GEMINI_API_KEY
+    GEMINI_API_KEY,
+    ALPHA_RULES
 )
 from universe import get_universe
 from data_engine import (
@@ -117,10 +118,23 @@ def run_scanner(mode: str = "full", force_refresh: bool = False, generate_ai_for
         elif item["bucket"] == "SATELLITE" and item["status"] == "WATCHLIST":
             satellite_watchlist.append(item)
 
-    # Řazení podle skóre a parametrů
-    alpha_alerts.sort(key=lambda x: x["score"], reverse=True)
-    core_watchlist.sort(key=lambda x: (x["score"], abs(x["pct_from_high"])), reverse=True)
-    satellite_watchlist.sort(key=lambda x: (x["score"], x["rev_growth_pct"]), reverse=True)
+    # Řazení podle skóre a Wall Street upside potenciálu
+    alpha_alerts.sort(key=lambda x: (x["score"], x.get("upside_pct", 0)), reverse=True)
+
+    # Přísná redukce na exkluzivní TOP N Alpha alertů (ostatní kvalitní akcie jdou do watchlistu k sledování)
+    max_alerts = ALPHA_RULES.get("max_daily_alerts", 5)
+    if len(alpha_alerts) > max_alerts:
+        excess = alpha_alerts[max_alerts:]
+        alpha_alerts = alpha_alerts[:max_alerts]
+        for exc in excess:
+            exc["status"] = "WATCHLIST"
+            if exc["bucket"] == "CORE":
+                core_watchlist.append(exc)
+            elif exc["bucket"] == "SATELLITE":
+                satellite_watchlist.append(exc)
+
+    core_watchlist.sort(key=lambda x: (x["score"], x.get("upside_pct", 0), abs(x["pct_from_high"])), reverse=True)
+    satellite_watchlist.sort(key=lambda x: (x["score"], x.get("upside_pct", 0), x["rev_growth_pct"]), reverse=True)
 
     # 7. AI analýza pro Alpha Alerty (pokud je povolená)
     ai_analyses = {}

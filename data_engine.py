@@ -11,6 +11,7 @@ from google import genai
 from config import (
     CORE_RULES,
     SATELLITE_RULES,
+    ALPHA_RULES,
     PORTFOLIO_RULES,
     GEMINI_API_KEY,
     DATA_DIR,
@@ -283,6 +284,11 @@ def evaluate_stock_combined(
     status = "NEUTRAL"
     score = 0
 
+    # Výpočet upside potenciálu podle analytiků Wall Street
+    upside_pct = 0.0
+    if target_price and current_price and target_price > current_price:
+        upside_pct = round(((target_price - current_price) / current_price) * 100, 1)
+
     # 1. TEST PRO KOŠ 1: CORE (Stabilita v rozumné slevě)
     is_exempt_debt = any(exempt_sec.lower() in sector.lower() for exempt_sec in CORE_RULES.get("exempt_sectors_debt", []))
     debt_ok = is_exempt_debt or (debt_to_equity is not None and debt_to_equity <= CORE_RULES["max_debt_to_equity"])
@@ -291,7 +297,7 @@ def evaluate_stock_combined(
 
     if debt_ok and fcf_ok and pe_ok:
         bucket = "CORE"
-        score = 55
+        score = 50
         debt_label = f"D/E: {debt_to_equity:.1f}%" if not is_exempt_debt else f"D/E vyjmuto ({sector})"
         reasons.append(f"Zdravý fundament (P/E: {pe_ratio:.1f}, {debt_label}, kladné FCF)")
 
@@ -300,33 +306,49 @@ def evaluate_stock_combined(
 
         # Sleva v ideálním pásmu 5 % až 20 %
         if dip_max <= pct_from_high <= dip_min:
-            score += 20
+            score += 15
             reasons.append(f"Zdravá sleva {pct_from_high:.1f}% od maxima (pásmo {dip_min}% až {dip_max}%)")
         elif pct_from_high < dip_max:
-            # Propad hlubší než 20 % -> podezření na Value Trap
+            # Propad hlubší než 20 % -> podezření na Value Trap / padající nůž
             reasons.append(f"⚠️ Hluboký propad ({pct_from_high:.1f}% z max). Pozor na padající nůž.")
         else:
             reasons.append(f"Kvalitní firma čekající na slevu alespoň {abs(dip_min):.0f}% (nyní {pct_from_high:.1f}%)")
 
-        # Přísné filtry pro ALPHA ALERT:
-        # A) Dlouhodobý trend nesmí být zlomen (cena nad SMA 200)
+        # Dlouhodobý trend: cena drží nad SMA 200
         if current_price > sma_200:
             score += 10
             reasons.append(f"Cena (${current_price}) drží nad SMA 200 (${sma_200}) – dlouhodobý trend neporušen")
 
-        # B) Vysoká kvalita kapitálu (ROE >= 12 % nebo marže >= 12 %)
-        if roe >= 12.0 or profit_margin >= 12.0:
+        # PŘÍSNÉ ALPHA KATALYZÁTORY PRO EXKLUZIVNÍ NÁKUP:
+        # A) Atraktivní valuace pod 24
+        if pe_ratio <= ALPHA_RULES["core_max_pe"]:
             score += 5
-            reasons.append(f"Vysoká rentabilita (ROE: {roe:.1f}%, marže: {profit_margin:.1f}%)")
+            reasons.append(f"Atraktivní valuace P/E {pe_ratio:.1f} <= {ALPHA_RULES['core_max_pe']}")
 
-        # C) Wall Street upside potenciál alespoň +10 %
-        if target_price and target_price > current_price:
-            upside_pct = ((target_price - current_price) / current_price) * 100
-            if upside_pct >= 10.0:
-                score += 5
-                reasons.append(f"Konsenzus Wall Street indikuje růstový potenciál +{upside_pct:.1f}%")
+        # B) Mimořádná rentabilita (ROE >= 15 % A marže >= 12 %)
+        if roe >= ALPHA_RULES["core_min_roe"] and profit_margin >= ALPHA_RULES["core_min_margin"]:
+            score += 10
+            reasons.append(f"Vysoká rentabilita (ROE: {roe:.1f}%, čistá marže: {profit_margin:.1f}%)")
 
-        status = "ALPHA_ALERT" if score >= 85 else "WATCHLIST"
+        # C) Skutečná sleva (sweet spot -7 % až -18 %)
+        if -18.0 <= pct_from_high <= ALPHA_RULES["core_dip_sweet_spot_min"]:
+            score += 5
+            reasons.append(f"Výrazná sleva v optimální zóně {pct_from_high:.1f}%")
+
+        # D) Silný konsenzus Wall Street (upside >= 15 %)
+        if upside_pct >= ALPHA_RULES["core_min_upside"]:
+            score += 10
+            reasons.append(f"Konsenzus Wall Street indikuje silný růstový potenciál +{upside_pct}%")
+
+        # E) Stabilní byznys: tržby nesmí klesat
+        if rev_growth < 0:
+            score -= 20
+            reasons.append(f"⚠️ Klesající tržby ({rev_growth*100:.1f}% YoY) – narušený růstový profil")
+        else:
+            score += 5
+            reasons.append(f"Stabilní/rostoucí tržby (+{rev_growth*100:.1f}% YoY)")
+
+        status = "ALPHA_ALERT" if score >= ALPHA_RULES["min_score"] else "WATCHLIST"
 
     # 2. TEST PRO KOŠ 2: SATELLITE (Růst & Momentum)
     is_sat_growth = rev_growth >= SATELLITE_RULES["min_revenue_growth"]
@@ -334,32 +356,41 @@ def evaluate_stock_combined(
 
     if is_sat_growth and is_sat_trend:
         bucket = "SATELLITE"
-        score = 55
+        score = 50
         reasons = [
             f"Růst tržeb {rev_growth*100:.1f}% YoY",
             f"Cena (${current_price}) v uptrendu nad SMA 50 (${sma_50}) i SMA 200 (${sma_200})"
         ]
 
-        # Momentum filtr
+        # Momentum filtr pro Watchlist
         if SATELLITE_RULES["rsi_min"] <= rsi <= SATELLITE_RULES["rsi_max"]:
-            score += 20
-            reasons.append(f"Optimální momentum (Wilder's RSI: {rsi:.1f})")
+            score += 15
+            reasons.append(f"Zdravé momentum (Wilder's RSI: {rsi:.1f})")
         else:
-            reasons.append(f"RSI mimo ideální okno 45–70 ({rsi:.1f})")
+            reasons.append(f"RSI mimo okno 45–70 ({rsi:.1f})")
 
-        # Mimořádný růst tržeb (>= 25 % YoY)
-        if rev_growth >= 0.25:
+        # PŘÍSNÉ ALPHA KATALYZÁTORY PRO EXKLUZIVNÍ NÁKUP:
+        # A) Hyper-růst tržeb (>= 25 % YoY)
+        if rev_growth >= ALPHA_RULES["sat_min_growth"]:
             score += 10
-            reasons.append(f"Super-růst tržeb (+{rev_growth*100:.1f}% YoY)")
+            reasons.append(f"Hyper-růst tržeb (+{rev_growth*100:.1f}% YoY)")
 
-        # Wall Street upside
-        if target_price and target_price > current_price:
-            upside_pct = ((target_price - current_price) / current_price) * 100
-            if upside_pct >= 15.0:
-                score += 5
-                reasons.append(f"Konsenzus Wall Street indikuje růstový potenciál +{upside_pct:.1f}%")
+        # B) Golden stack (SMA 50 je nad SMA 200)
+        if sma_50 > sma_200:
+            score += 10
+            reasons.append(f"Institucionální Golden Stack (SMA 50 ${sma_50} > SMA 200 ${sma_200})")
 
-        status = "ALPHA_ALERT" if score >= 85 else "WATCHLIST"
+        # C) Startovní RSI okno (50 až 65)
+        if ALPHA_RULES["sat_rsi_min"] <= rsi <= ALPHA_RULES["sat_rsi_max"]:
+            score += 5
+            reasons.append(f"Ideální startovní momentum bez přehřátí (RSI {rsi:.1f})")
+
+        # D) Wall Street upside (>= 20 %)
+        if upside_pct >= ALPHA_RULES["sat_min_upside"]:
+            score += 10
+            reasons.append(f"Konsenzus Wall Street indikuje růstový potenciál +{upside_pct}%")
+
+        status = "ALPHA_ALERT" if score >= ALPHA_RULES["min_score"] else "WATCHLIST"
 
     return {
         "ticker": ticker,
@@ -373,6 +404,7 @@ def evaluate_stock_combined(
         "profit_margin_pct": round(profit_margin, 1),
         "roe_pct": round(roe, 1),
         "target_price": round(target_price, 2) if target_price else None,
+        "upside_pct": upside_pct,
         "analyst_consensus": recommendation,
         "fcf": fcf,
         "rsi": rsi,
